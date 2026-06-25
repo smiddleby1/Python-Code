@@ -1,0 +1,126 @@
+Python script: Reg ex and matching values with excel
+import re
+from openpyxl import load_workbook
+from openpyxl.styles import Font
+
+input_file = r"C:/Users/middleby/Documents/Python Pandas files/Debit Mismatch.xlsx"
+SOURCE_SHEET = "Posting Journ"
+
+wb = load_workbook(input_file)
+ws = wb[SOURCE_SHEET]
+
+out_name = "Parsed Posting Journal"
+if out_name in wb.sheetnames:
+    del wb[out_name]
+
+out = wb.create_sheet(out_name)
+
+headers = [
+    "Account",
+    "Name",
+    "ID",
+    "Tran",
+    "Amount",
+    "Last Trn",
+    "Effect",
+]
+
+out.append(headers)
+
+account_re = re.compile(r"^(\d{10})\s+(.+)$")
+
+tran_re = re.compile(
+    r"^\s+(.+?)\s+"               # ID / address
+    r"([SLX])\s+"                 # Tran part 1
+    r"(\d{4})\s+"                 # Tran part 2
+    r"([A-Z]{2})\s+"              # Tran part 3
+    r"([\d,]+\.\d{2})\s+"         # Amount
+    r"[\d,]+\.\d{2}-?\s+"         # Principal - ignored
+    r"[\d,]+\.\d{2}\s+"           # Interest - ignored
+    r"[\d,]+\.\d{2}\s+"           # Fees - ignored
+    r"[\d,]+\.\d{2}\s+"           # New Balance - ignored
+    r"(\d{2}/\d{2}/\d{2})\s+"     # Last Trn
+    r"(\d{2}/\d{2}/\d{2})"        # Effect
+)
+
+def clean_amount(value):
+    return float(value.replace(",", ""))
+
+current_account = None
+current_name = None
+
+parsed_rows = []
+unparsed_rows = []
+
+for row in ws.iter_rows(values_only=True):
+    line = str(row[0] or "").rstrip()
+
+    if not line:
+        continue
+
+    if (
+        line.startswith("Account")
+        or line.startswith("-")
+        or line.startswith("CLEARVIEW")
+        or line.startswith("Transaction")
+        or line.startswith("Count")
+        or line.startswith("Amount")
+        or line.startswith("Principal")
+        or line.startswith("Interest")
+        or line.startswith("Fees")
+    ):
+        continue
+
+    acct_match = account_re.match(line)
+    if acct_match:
+        current_account = acct_match.group(1)
+        current_name = acct_match.group(2).strip()
+        continue
+
+    tran_match = tran_re.match(line)
+
+    if not tran_match:
+        unparsed_rows.append([
+            current_account,
+            current_name,
+            line,
+            "UNPARSED",
+            "",
+            "",
+            "",
+        ])
+        continue
+
+    id_value, tran_part1, tran_part2, tran_part3, amount, last_trn, effect = tran_match.groups()
+
+    tran_value = f"{tran_part1} {tran_part2} {tran_part3}"
+
+    parsed_rows.append([
+        current_account,
+        current_name,
+        id_value.strip(),
+        tran_value,
+        clean_amount(amount),
+        last_trn,
+        effect,
+    ])
+
+parsed_rows.sort(key=lambda x: x[4])
+
+for r in parsed_rows:
+    out.append(r)
+
+out.append([])
+out.append(["UNPARSED ROWS BELOW"])
+
+for r in unparsed_rows:
+    out.append(r)
+
+for cell in out[1]:
+    cell.font = Font(bold=True)
+
+for col in out.columns:
+    max_len = max(len(str(cell.value or "")) for cell in col)
+    out.column_dimensions[col[0].column_letter].width = min(max_len + 2, 35)
+
+wb.save(input_file)
