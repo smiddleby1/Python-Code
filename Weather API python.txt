@@ -1,0 +1,280 @@
+Geo Locator Python file:
+import requests
+
+
+class CityLoc:
+    def __init__(self, name, countrycode, statecode=None, limit=2, units="metric"):
+        self.search_name = name
+        self.countrycode = countrycode
+        self.statecode = statecode
+        self.limit = limit
+        self.units = units
+
+        self.get_location()
+        self.get_current_weather()
+
+    def get_location(self):
+        api_key = "YOUR_API_KEY_HERE"
+
+        if self.statecode:
+            q = f"{self.search_name},{self.statecode},{self.countrycode}"
+        else:
+            q = f"{self.search_name},{self.countrycode}"
+
+        url = "https://api.openweathermap.org/geo/1.0/direct"
+
+        params = {
+            "q": q,
+            "limit": self.limit,
+            "appid": api_key
+        }
+
+        response = requests.get(url, params=params, verify=False)
+        data = response.json()
+
+        if not data:
+            raise ValueError(f"No location found for {q}")
+
+        loc = data[0]
+
+        self.name = loc.get("name", self.search_name)
+        self.lat = loc.get("lat")
+        self.lon = loc.get("lon")
+        self.countrycode = loc.get("country", self.countrycode)
+        self.state = loc.get("state", self.statecode)
+
+    def get_current_weather(self):
+        api_key = "YOUR_API_KEY_HERE"
+
+        url = "https://api.openweathermap.org/data/2.5/weather"
+
+        params = {
+            "lat": self.lat,
+            "lon": self.lon,
+            "units": self.units,
+            "appid": api_key
+        }
+
+        response = requests.get(url, params=params, verify=False)
+        data = response.json()
+
+        main = data.get("main", {})
+
+        self.temp_celsius = main.get("temp")
+        self.temp_min = main.get("temp_min")
+        self.temp_max = main.get("temp_max")
+
+Core logic of how to execute: 2nd file 
+
+from func4API import CityLoc
+import requests
+from datetime import datetime, timedelta
+import pandas as pd
+import os
+
+
+class City:
+    def __init__(self, name, countrycode, statecode=None, limit=2, units="metric"):
+        loc = CityLoc(name, countrycode, statecode, limit, units)
+
+        self.name = loc.name
+        self.countrycode = loc.countrycode
+        self.lat = loc.lat
+        self.long = loc.lon
+        self.units = units
+
+        self.temp = loc.temp_celsius
+        self.temp_min = loc.temp_min
+        self.temp_max = loc.temp_max
+
+        self.get_data()
+        self.temp_print()
+
+    def Tempconv(self, value):
+        return float(round((9 / 5) * value + 32, 1))
+
+    def Windconv(self, meters):
+        if meters is None:
+            return 0
+        return float(round(2.2369 * meters, 2))
+
+    def get_data(self):
+        api_key = "YOUR_API_KEY_HERE"
+
+        params = {
+            "lat": self.lat,
+            "lon": self.long,
+            "units": self.units,
+            "cnt": 8,
+            "mode": "json",
+            "appid": api_key
+        }
+
+        url = "https://api.openweathermap.org/data/2.5/forecast"
+        response = requests.get(url, params=params, verify=False)
+        data = response.json()
+
+        self.response_json = data
+
+        tz_offset = data["city"]["timezone"]
+        blocks = data["list"]
+        first = blocks[0]
+
+        self.feels_like = first["main"]["feels_like"]
+        self.weather_id = first["weather"][0]["description"]
+        self.humidity = first["main"]["humidity"]
+        self.chance_precip = first.get("pop", 0)
+        self.wind_speed_meters = first.get("wind", {}).get("speed", 0)
+        self.wind_gust_meters = first.get("wind", {}).get("gust", 0)
+        self.clouds = first.get("clouds", {}).get("all", 0)
+
+        self.dt = first.get("dt_txt")
+        self.sunrise = data["city"]["sunrise"]
+        self.sunset = data["city"]["sunset"]
+        self.population = data["city"].get("population", 0)
+        self.country = data["city"]["country"]
+
+        sunrise_conv = datetime.utcfromtimestamp(self.sunrise + tz_offset)
+        sunset_conv = datetime.utcfromtimestamp(self.sunset + tz_offset)
+
+        self.sunrise_local = sunrise_conv.strftime("%H:%M:%S")
+        self.sunset_local = sunset_conv.strftime("%H:%M:%S")
+
+        temps_min = [b["main"].get("temp_min", b["main"]["temp"]) for b in blocks]
+        temps_max = [b["main"].get("temp_max", b["main"]["temp"]) for b in blocks]
+
+        self.temp_min_24h = min(temps_min)
+        self.temp_max_24h = max(temps_max)
+
+        self.rain_24h_mm = sum(b.get("rain", {}).get("3h", 0) for b in blocks)
+        self.snow_24h_mm = sum(b.get("snow", {}).get("3h", 0) for b in blocks)
+
+        self.dt_obj = datetime.strptime(self.dt, "%Y-%m-%d %H:%M:%S")
+        self.start_date = datetime.now().date()
+
+        self.current_temp = self.Tempconv(self.temp)
+
+    def temp_print(self):
+        self.rain_in = round(self.rain_24h_mm / 25.4, 4)
+        self.snow_in = round(self.snow_24h_mm / 25.4, 4)
+
+        self.feels_like_imp = self.Tempconv(self.feels_like)
+        self.wind_speed = self.Windconv(self.wind_speed_meters)
+        self.wind_gust = self.Windconv(self.wind_gust_meters)
+
+        self.end_date = self.start_date + timedelta(days=1)
+
+        if self.units == "metric":
+            self.fmin = self.Tempconv(self.temp_min_24h)
+            self.fmax = self.Tempconv(self.temp_max_24h)
+
+    def to_dict(self):
+        return {
+            "city": self.name,
+            "country": self.country,
+            "lat": self.lat,
+            "lon": self.long,
+            "population": self.population,
+
+            "temp_C_current": self.temp,
+            "temp_F_current": self.current_temp,
+            "temp_F_min": self.fmin,
+            "temp_F_max": self.fmax,
+            "feels_like_F": self.feels_like_imp,
+
+            "rain_in_24h": self.rain_in,
+            "snow_in_24h": self.snow_in,
+            "chance_precip": self.chance_precip,
+
+            "wind_speed_mph_3h": self.wind_speed,
+            "wind_gust_max_mph_3h": self.wind_gust,
+
+            "weather_description": self.weather_id,
+            "humidity": self.humidity,
+            "cloud_cover_pct": self.clouds,
+
+            "start_date_local": self.start_date.strftime("%Y/%m/%d"),
+            "end_date_local": self.end_date.strftime("%Y/%m/%d"),
+            "sunrise_local": self.sunrise_local,
+            "sunset_local": self.sunset_local,
+        }
+
+
+def save_weather_to_file(city_object, filename=r"C:\Users\middleby\Documents\DailyCityWeather1.txt"):
+    units_symbol = "F"
+
+    with open(filename, "a") as file:
+        file.write(
+            f"\nWeather data recorded for {city_object.name}, "
+            f"{city_object.country} on {city_object.start_date.strftime('%Y/%m/%d')}\n"
+        )
+
+        file.write(f"\nCity: {city_object.name}: {city_object.population:,}\n")
+
+        file.write(
+            f"Temperature: Feels like {city_object.feels_like_imp}°{units_symbol} "
+            f"in {city_object.name} With a high of {city_object.fmax}{units_symbol}° "
+            f"and low of {city_object.fmin}{units_symbol}°.\n"
+        )
+
+        file.write(
+            f"Weather Conditions: {city_object.weather_id} with "
+            f"{city_object.clouds}% cloud cover and humidity of "
+            f"{city_object.humidity}%\n"
+        )
+
+        if city_object.rain_in > 6:
+            file.write(
+                f"Precipitation Forecast: {city_object.rain_in} inches of "
+                f"Extremely Heavy rain is forecasted in {city_object.name} "
+                f"over the next 24 hours ~~Watch for flooding\n"
+            )
+        elif city_object.rain_in > 2.8:
+            file.write(
+                f"Precipitation Forecast: {city_object.rain_in} inches of "
+                f"Very Heavy rain is forecasted in {city_object.name} "
+                f"over the next 24 hours\n"
+            )
+        elif city_object.rain_in > 1.2:
+            file.write(
+                f"Precipitation Forecast: {city_object.rain_in} inches of "
+                f"Heavy rain is forecasted in {city_object.name} "
+                f"over the next 24 hours\n"
+            )
+        elif city_object.rain_in > 0.4:
+            file.write(
+                f"Precipitation Forecast: {city_object.rain_in} inches of "
+                f"Moderate rain is forecasted in {city_object.name} "
+                f"over the next 24 hours\n"
+            )
+        elif city_object.rain_in > 0:
+            file.write(
+                f"Precipitation Forecast: {city_object.rain_in} inches of "
+                f"Light rain is forecasted in {city_object.name} "
+                f"over the next 24 hours.\n"
+            )
+        else:
+            file.write(
+                f"Precipitation Forecast: No rain is expected in "
+                f"{city_object.name} over the next 24 hours. "
+                f"Enjoy the outdoors!\n"
+            )
+
+        file.write(
+            f"Daylight: The sun will rise at {city_object.sunrise_local} "
+            f"and set at {city_object.sunset_local}\n"
+        )
+
+        file.write(
+            f"The maximum wind speed today was: {city_object.wind_gust} "
+            f"miles per hour. The average windspeed the past 3 hours has "
+            f"been {city_object.wind_speed} mph\n"
+        )
+
+        file.write("-" * 30 + "\n")
+
+
+def build_weather_dataframe(cities):
+    rows = [c.to_dict() for c in cities]
+    return pd.DataFrame(rows)
+

@@ -1,0 +1,66 @@
+Excel file updated (Final portion that takes in daily data and should be dependent)
+from WeatherFileAPI import City, save_weather_to_file, build_weather_dataframe
+from datetime import datetime
+import pandas as pd
+import os
+
+
+my_city = City("Miami", "US")
+hometown = City("Pittsburgh", "US")
+goose_city = City("Seattle", "US")
+Bella_city = City("Albion", "US")
+Vacation_city = City("Clearwater Beach", "US")
+my_city1 = City("New York", "US")
+my_city2 = City("Boston", "US")
+my_city3 = City("Baltimore", "US")
+my_city4 = City("Detroit", "US")
+my_city5 = City("Los Angeles", "US")
+my_city6 = City("Chicago", "US")
+my_city7 = City("Minneapolis", "US")
+my_city8 = City("Phoenix", "US")
+my_city9 = City("San Antonio", "US")
+my_city10 = City("Dallas", "US")
+my_city11 = City("Denver", "US")
+my_city12 = City("Dublin", "IE")
+my_city13 = City("Buenos Aires", "AR")
+my_city14 = City("Saint Petersburg", "RU")
+my_city15 = City("Copenhagen", "DK")
+my_city16 = City("Paris", "FR")
+my_city17 = City("Munich", "DE")
+my_city18 = City("Athens", "GR")
+my_city19 = City("Tropea", "IT")
+my_city20 = City("Jerusalem", "IL")
+my_city21 = City("Baghdad", "IQ")
+
+cities = [
+    my_city, hometown, goose_city, Bella_city, Vacation_city,
+    my_city1, my_city2, my_city3, my_city4, my_city5,
+    my_city6, my_city7, my_city8, my_city9, my_city10,
+    my_city11, my_city12, my_city13, my_city14, my_city15,
+    my_city16, my_city17, my_city18, my_city19, my_city20,
+    my_city21,
+]
+
+for c in cities:
+    save_weather_to_file(c)
+
+df = build_weather_dataframe(cities)
+
+run_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+df["Date_TS"] = run_time
+
+excel_path = r"C:\Users\middleby\Documents\CityWeatherData.xlsx"
+
+if os.path.exists(excel_path):
+    old_df = pd.read_excel(excel_path)
+
+    blank_row = {col: None for col in old_df.columns}
+    old_df = pd.concat([old_df, pd.DataFrame([blank_row])], ignore_index=True)
+
+    combined_df = pd.concat([old_df, df], ignore_index=True)
+else:
+    combined_df = df
+
+combined_df.to_excel(excel_path, index=False)
+
+print("Excel updated:", excel_path)
