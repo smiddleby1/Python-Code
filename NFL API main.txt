@@ -1,0 +1,58 @@
+def main():
+    nflchoice = NFLTeams()
+
+    while True:
+        choice = menu()
+
+        if choice == "1":
+            # inner loop for mode 1 so "again" actually repeats this mode
+            while True:
+                result = nflchoice.find_player_id()
+                if not result:
+                    print("Player not found. Check spelling / official name.")
+                else:
+                    college_quiz(result)
+
+                nxt = play_again_prompt()
+                if nxt == "again":
+                    continue          # repeat mode 1
+                elif nxt == "menu":
+                    break             # exit mode 1 loop -> back to main menu
+                else:  # quit
+                    print("Goodbye!")
+                    return
+
+        elif choice == "2":
+            team_input = input("Enter an NFL team (e.g., 'DAL', 'Dallas Cowboys', 'Cowboys'):\n> ").strip()
+            if not team_input:
+                print("Please enter a team.")
+                continue
+
+            # inner loop for mode 2 so "again" repeats random player from SAME team
+            while True:
+                result = nflchoice.random_player_from_team(team_input)
+                if not result:
+                    print("Team not found (or roster unavailable). Try '3) List teams' to see valid options.")
+                    break  # back to main menu
+
+                print(f"Random pick from {result['team']}: {result['player']}")
+                college_quiz(result)
+
+                nxt = play_again_prompt()
+                if nxt == "again":
+                    continue          # another random player
+                elif nxt == "menu":
+                    break             # exit mode 2 loop -> back to main menu
+                else:  # quit
+                    print("Goodbye!")
+                    return
+
+        elif choice == "3":
+            nflchoice.list_teams()
+
+        elif choice == "4":
+            print("Goodbye!")
+            break
+
+        else:
+            print("Invalid choice. Please select 1–4.")

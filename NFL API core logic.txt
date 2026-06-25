@@ -1,0 +1,172 @@
+import requests
+import re
+import random
+
+
+class NFLTeams:
+    BASE = "https://api.sportradar.com/nfl/official/trial/v7/en"
+
+    def __init__(self):
+        self.api_key = "YOUR_API_KEY_HERE"
+
+        self.headers = {
+            "accept": "application/json"
+        }
+
+        self.params = {
+            "api_key": self.api_key
+        }
+
+        self.all_teams: list[dict] = []
+        self.player_list: list[dict] = []
+        self._roster_cache = {}
+
+        self.get_teams()
+
+    def _get(self, path):
+        url = f"{self.BASE}/{path}"
+
+        response = requests.get(
+            url,
+            headers=self.headers,
+            params=self.params,
+            verify=False
+        )
+
+        response.raise_for_status()
+        return response.json()
+
+    def get_teams(self):
+        data = self._get("league/teams.json")
+
+        teams = data.get("teams") or data.get("league", {}).get("teams") or []
+
+        for team in teams:
+            if team.get("name") == "TBD":
+                continue
+
+            self.all_teams.append({
+                "id": team.get("id"),
+                "name": team.get("name"),
+                "market": team.get("market"),
+                "alias": team.get("alias"),
+            })
+
+        return self.all_teams
+
+    def normalize_name(self, name):
+        if not name:
+            return ""
+
+        name = name.casefold().strip()
+        name = re.sub(r"\s+", " ", name)
+        name = re.sub(r"(?:,\s*)?(jr|sr|ii|iii|iv|v)\.?\s*$", "", name)
+
+        return name.strip()
+
+    def normalize_team_input(self, team_input):
+        if not team_input:
+            return ""
+
+        team_input = team_input.casefold().strip()
+        team_input = re.sub(r"\s+", " ", team_input)
+        team_input = re.sub(r"[^a-z0-9 ]+", "", team_input)
+
+        return team_input
+
+    def list_teams(self):
+        for team in sorted(self.all_teams, key=lambda x: (x["market"], x["name"])):
+            print(f"- {team['market']} {team['name']} ({team['alias']})")
+
+    def find_team(self, team_input):
+        user_team = self.normalize_team_input(team_input)
+
+        for team in self.all_teams:
+            market = self.normalize_team_input(team.get("market"))
+            name = self.normalize_team_input(team.get("name"))
+            alias = self.normalize_team_input(team.get("alias"))
+            full_name = self.normalize_team_input(f"{team.get('market')} {team.get('name')}")
+
+            if user_team in [market, name, alias, full_name]:
+                return team
+
+        return None
+
+    def get_roster(self, team_id):
+        if team_id in self._roster_cache:
+            return self._roster_cache[team_id]
+
+        data = self._get(f"teams/{team_id}/full_roster.json")
+
+        players = data.get("players") or data.get("team", {}).get("players") or []
+
+        self._roster_cache[team_id] = players
+
+        return players
+
+    def random_player_from_team(self, team_input):
+        team = self.find_team(team_input)
+
+        if not team:
+            return None
+
+        roster = self.get_roster(team["id"])
+
+        if not roster:
+            return None
+
+        player = random.choice(roster)
+
+        return {
+            "player_id": player.get("id"),
+            "team_id": team.get("id"),
+            "team": f"{team.get('market')} {team.get('name')}",
+            "player": player.get("name"),
+            "college": player.get("college"),
+            "high_school": player.get("high_school"),
+            "position": player.get("position")
+        }
+
+    def find_player_id(self):
+        player_input = input("Enter the NFL player you want to search:\n> ").strip().lower()
+        player_name = self.normalize_name(player_input)
+
+        for team in self.all_teams:
+            team_id = team.get("id")
+
+            try:
+                roster = self.get_roster(team_id)
+
+                for player in roster:
+                    api_player_name = self.normalize_name(player.get("name"))
+
+                    if api_player_name == player_name:
+                        person = {
+                            "player_id": player.get("id"),
+                            "team_id": team_id,
+                            "team": f"{team.get('market')} {team.get('name')}",
+                            "player": player.get("name"),
+                            "college": player.get("college"),
+                            "high_school": player.get("high_school"),
+                            "position": player.get("position")
+                        }
+
+                        self.player_list.append(person)
+
+                        print(f"Player found: {person['player']}")
+
+                        return person
+
+            except requests.HTTPError:
+                continue
+
+            except requests.RequestException:
+                continue
+
+        print(f"{player_input}: Player not found. Check spelling or official name.")
+        return None
+
+
+if __name__ == "__main__":
+    nfl = NFLTeams()
+    nfl.find_player_id()
